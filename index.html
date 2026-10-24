@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google TV Android 14 Launcher</title>
+  <!-- HLS.js para reprodução de canais de TV ao vivo via .m3u8 -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #0d0e11;
+      font-family: 'Google Sans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #ffffff;
+    }
+
+    /* BACKGROUND COM VÍDEO EM LOOP (HERO IMMERSIVE) */
+    .bg-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      overflow: hidden;
+    }
+
+    .bg-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.05);
+      transition: opacity 0.8s ease;
+    }
+
+    .bg-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: 
+        radial-gradient(circle at 80% 20%, rgba(0, 0, 0, 0.2) 0%, rgba(13, 14, 17, 0.85) 100%),
+        linear-gradient(to top, #0d0e11 15%, rgba(13, 14, 17, 0.6) 50%, rgba(13, 14, 17, 0.3) 100%);
+      z-index: 2;
+    }
+
+    /* ESTRUTURA PRINCIPAL */
+    .app-container {
+      position: relative;
+      z-index: 3;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2.5rem 4rem 2rem 4rem;
+    }
+
+    /* TOP BAR */
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 0.9rem;
+      margin-right: 0.5rem;
+    }
+
+    .nav-pill {
+      padding: 0.5rem 1.2rem;
+      border-radius: 50px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #e3e2e6;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .nav-pill.active {
+      background-color: #ffffff;
+      color: #000000;
+      font-weight: 600;
+    }
+
+    .nav-pill:focus, .icon-btn:focus, .featured-card:focus, .app-icon:focus, .channel-card:focus, .btn-action:focus {
+      outline: none;
+      background-color: #ffffff !important;
+      color: #000000 !important;
+      transform: scale(1.06);
+      border-color: #ffffff !important;
+      box-shadow: 0 8px 24px rgba(255,255,255,0.3);
+      z-index: 10;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+    }
+
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 2px solid transparent;
+    }
+
+    .brand-title {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #c4c6d0;
+      margin-left: 0.5rem;
+    }
+
+    /* VIEWS / TELAS (INÍCIO vs TV AO VIVO) */
+    .view-section {
+      display: none;
+      flex-direction: column;
+      justify-content: flex-end;
+      flex: 1;
+      margin-top: 1rem;
+    }
+
+    .view-section.active {
+      display: flex;
+    }
+
+    /* HERO CONTENT */
+    .hero-content {
+      margin-bottom: 1.2rem;
+      max-width: 650px;
+    }
+
+    .provider-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 0.4rem;
+    }
+
+    .movie-title {
+      font-size: 2.5rem;
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 0.5rem;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    .movie-meta {
+      font-size: 0.85rem;
+      color: #c4c6d0;
+      margin-bottom: 0.5rem;
+    }
+
+    /* CARrosséis */
+    .section-title {
+      font-size: 0.85rem;
+      color: #c4c6d0;
+      margin-bottom: 0.6rem;
+      font-weight: 500;
+    }
+
+    .featured-row {
+      display: flex;
+      gap: 1.2rem;
+      overflow-x: hidden;
+      padding: 0.4rem 0;
+    }
+
+    .featured-card {
+      min-width: 170px;
+      height: 96px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #282a2f;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+      border: 2px solid transparent;
+    }
+
+    .featured-card img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* APPS SEÇÃO */
+    .apps-section {
+      margin-top: 1rem;
+    }
+
+    .apps-row {
+      display: flex;
+      gap: 1.2rem;
+      align-items: center;
+      overflow-x: hidden;
+      padding: 0.4rem 0;
+    }
+
+    .app-icon {
+      min-width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #1e1f23;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.2, 0, 0, 1);
+      border: 2px solid transparent;
+      overflow: hidden;
+    }
+
+    .app-icon span {
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+
+    /* ========================================================
+       SEÇÃO: TV AO VIVO & M3U
+       ======================================================== */
+    .live-tv-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      gap: 1rem;
+    }
+
+    .live-header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .categories-row {
+      display: flex;
+      gap: 0.6rem;
+      overflow-x: auto;
+      padding-bottom: 0.3rem;
+    }
+
+    .cat-btn {
+      background: rgba(255,255,255,0.08);
+      border: none;
+      padding: 0.4rem 1rem;
+      border-radius: 20px;
+      color: #fff;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: 0.2s;
+    }
+
+    .cat-btn.active, .cat-btn:focus {
+      background: #fff;
+      color: #000;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .m3u-import-bar {
+      display: flex;
+      gap: 0.8rem;
+      align-items: center;
+      background: rgba(255,255,255,0.05);
+      padding: 0.6rem 1rem;
+      border-radius: 12px;
+    }
+
+    .m3u-import-bar input[type="text"] {
+      flex: 1;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 0.5rem 0.8rem;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.85rem;
+    }
+
+    .btn-action {
+      background: #1f6feb;
+      color: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .channels-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      max-height: 52vh;
+      overflow-y: auto;
+      padding-right: 0.5rem;
+    }
+
+    .channel-card {
+      background: #1a1c23;
+      border-radius: 12px;
+      padding: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: 0.2s;
+    }
+
+    .channel-logo {
+      width: 50px;
+      height: 50px;
+      object-fit: contain;
+      background: #fff;
+      border-radius: 8px;
+      padding: 4px;
+    }
+
+    .channel-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+    }
+
+    .channel-group {
+      font-size: 0.7rem;
+      color: #9aa0a6;
+      background: rgba(255,255,255,0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* PLAYER MODAL AO VIVO */
+    #playerModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+    }
+
+    #playerModal.active {
+      display: flex;
+    }
+
+    #liveVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .player-overlay-info {
+      position: absolute;
+      top: 2rem;
+      left: 2rem;
+      background: rgba(0,0,0,0.7);
+      padding: 0.8rem 1.5rem;
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .back-instruction {
+      position: absolute;
+      bottom: 2rem;
+      right: 2rem;
+      background: rgba(255,255,255,0.2);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- VÍDEO DE FUNDO -->
+  <div class="bg-container" id="bgContainer">
+    <video class="bg-video" autoplay loop muted playsinline id="bgVideo">
+      <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+    </video>
+    <div class="bg-overlay"></div>
+  </div>
+
+  <div class="app-container">
+
+    <!-- TOP NAVIGATION BAR -->
+    <header class="top-bar">
+      <div class="nav-left">
+        <div class="avatar" tabindex="0">R</div>
+        <button class="nav-pill active" onclick="switchView('home')" tabindex="0">For you</button>
+        <button class="nav-pill" onclick="switchView('live')" tabindex="0">TV AO VIVO</button>
+        <button class="nav-pill" tabindex="0">Apps</button>
+        <button class="nav-pill" tabindex="0">Library</button>
+      </div>
+      <div class="nav-right">
+        <div class="icon-btn" tabindex="0" title="Pesquisar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <div class="icon-btn" tabindex="0" title="Configurações">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <span class="brand-title">Google TV</span>
+      </div>
+    </header>
+
+    <!-- VIEW 1: INÍCIO (FOR YOU) -->
+    <div id="homeView" class="view-section active">
+      <div class="hero-content">
+        <div class="provider-logo" id="heroProvider">YouTube</div>
+        <h1 class="movie-title" id="heroTitle">The Super Mario Bros. Movie</h1>
+        <div class="movie-meta" id="heroDesc">Trending | Brooklyn plumbers look to save the Mushroom Kingdom</div>
+      </div>
+
+      <div class="bottom-section">
+        <div class="section-title">Top picks for you</div>
+        <div class="featured-row">
+          <div class="featured-card" tabindex="0" onclick="changeHero(0)"><img src="https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400"></div>
+          <div class="featured-card" tabindex="0" onclick="changeHero(1)"><img src="https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=400"></div>
+          <div class="featured-card" tabindex="0" onclick="changeHero(2)"><img src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400"></div>
+          <div class="featured-card" tabindex="0" onclick="changeHero(3)"><img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400"></div>
+        </div>
+
+        <div class="apps-section">
+          <div class="section-title">Your apps</div>
+          <div class="apps-row">
+            <div class="app-icon" tabindex="0" style="background:#000;"><span style="color:#E50914;">NETFLIX</span></div>
+            <div class="app-icon" tabindex="0" style="background:#FF0000;"><span style="color:#FFF;">YT</span></div>
+            <div class="app-icon" tabindex="0" style="background:#00A8E1;"><span style="color:#FFF;">PRIME</span></div>
+            <div class="app-icon" tabindex="0" style="background:#113CCF;"><span style="color:#FFF;">DISNEY</span></div>
+            <div class="app-icon" tabindex="0" style="background:#002BE7;"><span style="color:#FFF;">MAX</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: TV AO VIVO & M3U -->
+    <div id="liveView" class="view-section">
+      <div class="live-tv-container">
+        <div class="live-header-bar">
+          <div class="categories-row">
+            <button class="cat-btn active" onclick="filterCategory('Todos')" tabindex="0">Todos</button>
+            <button class="cat-btn" onclick="filterCategory('Aberta')" tabindex="0">TV Aberta</button>
+            <button class="cat-btn" onclick="filterCategory('Notícias')" tabindex="0">Notícias</button>
+            <button class="cat-btn" onclick="filterCategory('Esportes')" tabindex="0">Esportes</button>
+          </div>
+        </div>
+
+        <div class="m3u-import-bar">
+          <input type="text" id="m3uUrlInput" placeholder="Cole o link da lista M3U ou M3U8 autorizada...">
+          <button class="btn-action" onclick="importM3UFromURL()" tabindex="0">Carregar M3U</button>
+          <label class="btn-action" style="cursor:pointer; display:inline-block; text-align:center;">
+            Arquivo .m3u<input type="file" id="m3uFileInput" accept=".m3u,.m3u8" style="display:none" onchange="importM3UFromFile(event)">
+          </label>
+        </div>
+
+        <div class="channels-grid" id="channelsGrid">
+          <!-- Canais padrão públicos/autorizados ou importados -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- PLAYER MODAL DE VÍDEO AO VIVO -->
+  <div id="playerModal">
+    <div class="player-overlay-info">
+      <h2 id="playingChannelName">Canal</h2>
+      <span style="font-size:0.8rem; color:#aaa;">Transmissão ao vivo</span>
+    </div>
+    <video id="liveVideo" controls autoplay playsinline></video>
+    <div class="back-instruction">Pressione Voltar (ESC) para sair</div>
+  </div>
+
+  <script>
+    // Alternância de Abas
+    function switchView(viewName) {
+      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-pill').forEach(el => el.classList.remove('active'));
+      
+      if(viewName === 'home') {
+        document.getElementById('homeView').classList.add('active');
+        event.target.classList.add('active');
+      } else if(viewName === 'live') {
+        document.getElementById('liveView').classList.add('active');
+        event.target.classList.add('active');
+        renderChannels(channels);
+      }
+    }
+
+    // Destaques Dinâmicos do Hero
+    const heroData = [
+      { provider: "YouTube", title: "The Super Mario Bros. Movie", desc: "Trending | Brooklyn plumbers look to save the Mushroom Kingdom" },
+      { provider: "Netflix", title: "Stranger Things", desc: "Popular | When a young boy vanishes, a small town uncovers a mystery" },
+      { provider: "Disney+", title: "Guardians of the Galaxy", desc: "Recommended | Peter Quill and his misfit crew embark on a new adventure" },
+      { provider: "Max", title: "Oppenheimer", desc: "Featured | The story of American scientist J. Robert Oppenheimer" }
+    ];
+    function changeHero(index) {
+      document.getElementById('heroProvider').innerText = heroData[index].provider;
+      document.getElementById('heroTitle').innerText = heroData[index].title;
+      document.getElementById('heroDesc').innerText = heroData[index].desc;
+    }
+
+    // Gerenciamento de Canais de TV e M3U
+    let channels = [
+      { name: "Red Bull TV", group: "Esportes", logo: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=100", url: "https://rbmn-live.akamaized.net/hls/live/590964/BoRB-desktop/index.m3u8" },
+      { name: "Euronews Português", group: "Notícias", logo: "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=100", url: "https://euronews-euronews-portuguese-1-us.rakuten.wurl.tv/playlist.m3u8" }
+    ];
+
+    function renderChannels(list) {
+      const grid = document.getElementById('channelsGrid');
+      grid.innerHTML = '';
+      if(list.length === 0) {
+        grid.innerHTML = '<p style="color:#aaa; grid-column: 1/-1; text-align:center; padding: 2rem;">Nenhum canal encontrado. Importe uma lista M3U acima.</p>';
+        return;
+      }
+      list.forEach((ch, idx) => {
+        const card = document.createElement('div');
+        card.className = 'channel-card';
+        card.tabIndex = 0;
+        card.innerHTML = `
+          <img src="${ch.logo || 'https://via.placeholder.com/50'}" class="channel-logo" onerror="this.src='https://via.placeholder.com/50'">
+          <span class="channel-name">${ch.name}</span>
+          <span class="channel-group">${ch.group || 'Geral'}</span>
+        `;
+        card.onclick = () => playChannel(ch);
+        grid.appendChild(card);
+      });
+    }
+
+    function filterCategory(cat) {
+      document.querySelectorAll('.cat-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      if(cat === 'Todos') {
+        renderChannels(channels);
+      } else {
+        const filtered = channels.filter(c => c.group.toLowerCase().includes(cat.toLowerCase()));
+        renderChannels(filtered);
+      }
+    }
+
+    // Leitor e Interpretador de M3U (#EXTINF)
+    function parseM3U(content) {
+      const lines = content.split('\n');
+      let parsed = [];
+      let currentChannel = {};
+
+      lines.forEach(line => {
+        line = line.trim();
+        if (line.startsWith('#EXTINF:')) {
+          currentChannel = {};
+          let tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
+          let logoMatch = line.match(/tvg-logo="([^"]*)"/);
+          let groupMatch = line.match(/group-title="([^"]*)"/);
+          
+          let parts = line.split(',');
+          currentChannel.name = parts[parts.length - 1].trim();
+          currentChannel.group = groupMatch ? groupMatch[1] : 'M3U Importado';
+          currentChannel.logo = logoMatch ? logoMatch[1] : '';
+        } else if (line && !line.startsWith('#')) {
+          currentChannel.url = line;
+          if (currentChannel.name && currentChannel.url) {
+            parsed.push(currentChannel);
+            currentChannel = {};
+          }
+        }
+      });
+      return parsed;
+    }
+
+    function importM3UFromFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const imported = parseM3U(e.target.result);
+        if(imported.length > 0) {
+          channels = channels.concat(imported);
+          renderChannels(channels);
+          alert(`${imported.length} canais importados com sucesso!`);
+        } else {
+          alert('Formato M3U inválido ou sem canais legíveis.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function importM3UFromURL() {
+      const url = document.getElementById('m3uUrlInput').value.trim();
+      if(!url) {
+        alert('Insira uma URL válida.');
+        return;
+      }
+      fetch(url)
+        .then(res => res.text())
+        .then(text => {
+          const imported = parseM3U(text);
+          if(imported.length > 0) {
+            channels = channels.concat(imported);
+            renderChannels(channels);
+            alert(`${imported.length} canais carregados via URL!`);
+          } else {
+            alert('Não foi possível ler canais desta URL.');
+          }
+        })
+        .catch(err => alert('Erro ao baixar lista M3U. Verifique bloqueios CORS ou URL inválida.'));
+    }
+
+    // Reprodução de Vídeo HLS (.m3u8)
+    let hlsInstance = null;
+    function playChannel(channel) {
+      const modal = document.getElementById('playerModal');
+      const video = document.getElementById('liveVideo');
+      document.getElementById('playingChannelName').innerText = channel.name;
+      modal.classList.add('active');
+
+      if (Hls.isSupported() && channel.url.includes('.m3u8')) {
+        if (hlsInstance) hlsInstance.destroy();
+        hlsInstance = new Hls();
+        hlsInstance.loadSource(channel.url);
+        hlsInstance.attachMedia(video);
+        hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+      } else {
+        video.src = channel.url;
+        video.play();
+      }
+    }
+
+    function closePlayer() {
+      const modal = document.getElementById('playerModal');
+      const video = document.getElementById('liveVideo');
+      video.pause();
+      video.src = '';
+      if(hlsInstance) hlsInstance.destroy();
+      modal.classList.remove('active');
+    }
+
+    // Atalhos de Controle Remoto (D-Pad & Botão Voltar)
+    document.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('playerModal');
+      if (e.key === 'Escape' || e.keyCode === 4 || e.keyCode === 27) {
+        if(modal.classList.contains('active')) {
+          closePlayer();
+          e.preventDefault();
+        }
+      }
+    });
+  </script>
+
+  <!-- ======================================================================
+       ADICIONADO PARA RODAR COMO APP DE TV. Tudo acima desta linha é o seu arquivo original.
+       Aqui só entram: apps reais da TV, navegação pelas setas/OK, botão Voltar do controle,
+       tela "Apps", alert() e um plano B caso o hls.js não carregue.
+       ====================================================================== -->
+  <script>
+  (function () {
+    var A = window.Android || null;
+    function q(s) { return document.querySelector(s); }
+    function qa(s) { return document.querySelectorAll(s); }
+    function b64ToText(b) {
+      var bin = atob(b), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+
+    // Plano B: sem internet o hls.js não carrega; o player cai para o vídeo direto.
+    if (typeof window.Hls === 'undefined') window.Hls = { isSupported: function () { return false; } };
+
+    // ---- estilo da tela "Apps" e dos ícones reais ----
+    var st = document.createElement('style');
+    st.textContent =
+      '.app-icon img{width:100%;height:100%;object-fit:contain;padding:8px}' +
+      '#appsView{justify-content:flex-start}' +
+      '.apps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:1rem;max-height:62vh;overflow-y:auto;padding:.8rem .5rem}' +
+      '.apps-grid .app-icon{width:68px;min-width:68px;height:68px;margin:0 auto}';
+    document.head.appendChild(st);
+
+    // ---- tela "Apps" (nova aba, a original não fazia nada) ----
+    var appsView = document.createElement('div');
+    appsView.id = 'appsView'; appsView.className = 'view-section';
+    var tt = document.createElement('div'); tt.className = 'section-title'; tt.textContent = 'Apps';
+    var grid = document.createElement('div'); grid.className = 'apps-grid'; grid.id = 'appsGrid';
+    appsView.appendChild(tt); appsView.appendChild(grid);
+    q('.app-container').appendChild(appsView);
+
+    var origSwitch = window.switchView;
+    window.switchView = function (n) {
+      if (n === 'apps') {
+        qa('.view-section').forEach(function (e) { e.classList.remove('active'); });
+        qa('.nav-pill').forEach(function (e) { e.classList.remove('active'); });
+        appsView.classList.add('active');
+        var t = window.event && window.event.target;
+        if (t && t.classList) t.classList.add('active');
+        return;
+      }
+      appsView.classList.remove('active');
+      origSwitch(n);
+    };
+    var pills = qa('.nav-pill');
+    pills[2].addEventListener('click', function () { window.switchView('apps'); });
+    var settingsBtn = q('.icon-btn[title="Configurações"]');
+    if (settingsBtn) settingsBtn.addEventListener('click', function () { if (A) A.openSettings('all'); });
+
+    // ---- apps instalados na TV (no lugar dos ícones de enfeite) ----
+    var ORDER = ['unitv', 'youtube', 'netflix', 'globoplay', 'primevideo', 'disney', 'max', 'hbomax', 'spotify'];
+    function norm(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+    function rank(a) {
+      var n = norm(a.l);
+      for (var i = 0; i < ORDER.length; i++) if (n === ORDER[i] || n.indexOf(ORDER[i]) === 0) return i;
+      return 100;
+    }
+    function mkIcon(a) {
+      var d = document.createElement('div');
+      d.className = 'app-icon'; d.tabIndex = 0; d.title = a.l;
+      d.setAttribute('data-pkg', a.p); d.setAttribute('data-name', a.l);
+      var im = document.createElement('img'); im.alt = a.l; im.src = 'data:image/png;base64,' + a.i;
+      d.appendChild(im);
+      d.addEventListener('click', function () { if (A) A.launch(a.p); });
+      return d;
+    }
+    window.onApps = function (b64) {
+      var list = [];
+      try { list = JSON.parse(b64ToText(b64)); } catch (e) { list = []; }
+      list.sort(function (x, y) { var d = rank(x) - rank(y); return d !== 0 ? d : x.l.toLowerCase().localeCompare(y.l.toLowerCase()); });
+      var row = q('#homeView .apps-row'), g = q('#appsGrid');
+      row.textContent = ''; g.textContent = '';
+      list.forEach(function (a) { row.appendChild(mkIcon(a)); g.appendChild(mkIcon(a)); });
+    };
+    // O nome do app em foco aparece no título da fileira.
+    var rowTitle = q('.apps-section .section-title'), rowTitleText = rowTitle ? rowTitle.textContent : '';
+    document.addEventListener('focusin', function (e) {
+      var n = e.target && e.target.getAttribute && e.target.getAttribute('data-name');
+      if (rowTitle) rowTitle.textContent = n ? rowTitleText + ' · ' + n : rowTitleText;
+    });
+
+    // ---- navegação pelas setas, OK e Voltar ----
+    function visible(n) { var r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+    function candidates() {
+      var all = qa('[tabindex="0"], input[type="text"], label.btn-action'), out = [];
+      for (var i = 0; i < all.length; i++) if (visible(all[i])) out.push(all[i]);
+      return out;
+    }
+    function move(dir) {
+      var cur = document.activeElement, c = candidates();
+      if (!cur || c.indexOf(cur) < 0) { if (c.length) c[0].focus(); return; }
+      var r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2, best = null, bs = 1e12;
+      for (var i = 0; i < c.length; i++) {
+        var n = c[i]; if (n === cur) continue;
+        var p = n.getBoundingClientRect(), dx = p.left + p.width / 2 - cx, dy = p.top + p.height / 2 - cy, a, b;
+        if (dir === 'Right') { if (dx <= 2) continue; a = dx; b = Math.abs(dy); }
+        else if (dir === 'Left') { if (dx >= -2) continue; a = -dx; b = Math.abs(dy); }
+        else if (dir === 'Down') { if (dy <= 2) continue; a = dy; b = Math.abs(dx); }
+        else { if (dy >= -2) continue; a = -dy; b = Math.abs(dx); }
+        var s = a + b * 3;
+        if (s < bs) { bs = s; best = n; }
+      }
+      if (best) { best.focus({ preventScroll: true }); try { best.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
+    }
+    function keyName(e) {
+      if (e.key && e.key !== 'Unidentified') return e.key;
+      return { 13: 'Enter', 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight', 40: 'ArrowDown' }[e.keyCode] || '';
+    }
+    document.addEventListener('keydown', function (e) {
+      var k = keyName(e), t = document.activeElement;
+      var playing = q('#playerModal').classList.contains('active');
+      if (playing) {
+        if (k === 'Enter') { var v = q('#liveVideo'); if (v.paused) { var pr = v.play(); if (pr && pr.catch) pr.catch(function () {}); } else v.pause(); e.preventDefault(); }
+        return;
+      }
+      var inText = t && t.tagName === 'INPUT';
+      if (k.indexOf('Arrow') === 0) {
+        if (inText && (k === 'ArrowLeft' || k === 'ArrowRight')) return;
+        e.preventDefault(); move(k.substring(5));
+      } else if (k === 'Enter' && t && !inText && t.tagName !== 'BUTTON') {
+        e.preventDefault(); t.click();
+      }
+    }, true);
+
+    function goFirstTab() { var p = qa('.nav-pill')[0]; p.click(); p.focus(); }
+    window.__back = function () {
+      if (q('#playerModal').classList.contains('active')) { closePlayer(); return; }
+      goFirstTab();
+    };
+    window.__home = function () { if (q('#playerModal').classList.contains('active')) closePlayer(); goFirstTab(); };
+    window.__stop = function () { if (q('#playerModal').classList.contains('active')) closePlayer(); };
+
+    // o botão "Arquivo .m3u" também precisa ser alcançável pelo controle
+    var lbl = q('label.btn-action'); if (lbl) lbl.tabIndex = 0;
+
+    if (A) A.requestApps();
+    setTimeout(function () { var f = q('.featured-card'); if (f) f.focus(); }, 80);
+  })();
+  </script>
+
+</body>
+</html>
